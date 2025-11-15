@@ -8,8 +8,9 @@ DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `user_id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   `password_hash` VARCHAR(255) NOT NULL,
-  `user_name` VARCHAR(255) NOT NULL
-  );
+  `user_name` VARCHAR(255) NOT NULL,
+  INDEX `user_name_idx` (`user_name`)
+);
 
 -- productsテーブルの作成
 CREATE TABLE products (
