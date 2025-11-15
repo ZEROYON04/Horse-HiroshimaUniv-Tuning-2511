@@ -21,9 +21,10 @@ func NewProductService(store *repository.Store) *ProductService {
 func (s *ProductService) CreateOrders(ctx context.Context, userID int, items []model.RequestItem) ([]string, error) {
 	var insertedOrderIDs []string
 
+	ctx, span := otel.Tracer("service.product").Start(ctx, "ProductService.CreateOrders")
+	defer span.End()
+
 	err := s.store.ExecTx(ctx, func(txStore *repository.Store) error {
-		ctx, span := otel.Tracer("service.product").Start(ctx, "ProductService.CreateOrders")
-		defer span.End()
 		itemsToProcess := make(map[int]int)
 		for _, item := range items {
 			if item.Quantity > 0 {
