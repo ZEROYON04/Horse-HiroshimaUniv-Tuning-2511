@@ -23,9 +23,9 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 	args := []interface{}{}
 
 	if req.Search != "" {
-		baseQuery += " WHERE (name LIKE ? OR description LIKE ?)"
-		searchPattern := "%" + req.Search + "%"
-		args = append(args, searchPattern, searchPattern)
+		baseQuery += " WHERE MATCH (name,description) AGAINST (? IN BOOLEAN MODE)"
+		searchPattern := "*" + req.Search + "*"
+		args = append(args, searchPattern)
 	}
 
 	baseQuery += " ORDER BY " + req.SortField + " " + req.SortOrder + " , product_id ASC"
