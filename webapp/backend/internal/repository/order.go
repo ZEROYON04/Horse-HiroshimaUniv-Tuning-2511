@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel"
 )
 
 type OrderRepository struct {
@@ -21,6 +22,8 @@ func NewOrderRepository(db DBTX) *OrderRepository {
 
 // 注文を作成し、生成された注文IDを返す
 func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (string, error) {
+	ctx, span := otel.Tracer("service.order").Start(ctx, "OrderRepository.Create")
+	defer span.End()
 	query := `INSERT INTO orders (user_id, product_id, shipped_status, created_at) VALUES (?, ?, 'shipping', NOW())`
 	result, err := r.db.ExecContext(ctx, query, order.UserID, order.ProductID)
 	if err != nil {
