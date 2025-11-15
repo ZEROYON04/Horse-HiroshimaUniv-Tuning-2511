@@ -39,7 +39,7 @@ func InitDBConnection() (*sqlx.DB, error) {
 
 	dbConn.SetMaxOpenConns(25)
 	dbConn.SetMaxIdleConns(10)
-	dbConn.SetConnMaxLifetime(0)
+	dbConn.SetConnMaxLifetime(10 * time.Second)
 
 	return dbConn, nil
 }
