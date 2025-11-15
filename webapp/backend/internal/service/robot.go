@@ -27,7 +27,7 @@ func (s *RobotService) GenerateDeliveryPlan(ctx context.Context, robotID string,
 			if err != nil {
 				return err
 			}
-			plan, err = selectOrdersForDelivery(ctx, orders, robotID, capacity)
+			plan, err = dpSelectOrders(ctx, orders, robotID, capacity)
 			if err != nil {
 				return err
 			}
@@ -57,48 +57,64 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 	})
 }
 
-func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
+func dpSelectOrders(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
 	n := len(orders)
-	bestValue := 0
+	if n == 0 || robotCapacity <= 0 {
+		return model.DeliveryPlan{
+			RobotID:     robotID,
+			TotalWeight: 0,
+			TotalValue:  0,
+			Orders:      nil,
+		}, nil
+	}
+
+	// values[i][w] = max value using first i items with capacity w
+	values := make([][]int, n+1)
+	for i := 0; i <= n; i++ {
+		values[i] = make([]int, robotCapacity+1)
+	}
+
+	for i := 1; i <= n; i++ {
+		// キャンセルチェック
+		select {
+		case <-ctx.Done():
+			return model.DeliveryPlan{}, ctx.Err()
+		default:
+		}
+		w := orders[i-1].Weight
+		v := orders[i-1].Value
+		for cap := 0; cap <= robotCapacity; cap++ {
+			if w > cap {
+				values[i][cap] = values[i-1][cap]
+			} else {
+				without := values[i-1][cap]
+				with := values[i-1][cap-w] + v
+				if with > without {
+					values[i][cap] = with
+				} else {
+					values[i][cap] = without
+				}
+			}
+		}
+	}
+
+	bestValue := values[n][robotCapacity]
+
+	// 復元
+	cap := robotCapacity
 	var bestSet []model.Order
-	steps := 0
-	checkEvery := 16384
-
-	var dfs func(i, curWeight, curValue int, curSet []model.Order) bool
-	dfs = func(i, curWeight, curValue int, curSet []model.Order) bool {
-		if curWeight > robotCapacity {
-			return false
+	for i := n; i > 0 && cap >= 0; i-- {
+		if values[i][cap] != values[i-1][cap] {
+			bestSet = append(bestSet, orders[i-1])
+			cap -= orders[i-1].Weight
 		}
-		steps++
-		if checkEvery > 0 && steps%checkEvery == 0 {
-			select {
-			case <-ctx.Done():
-				return true
-			default:
-			}
-		}
-		if i == n {
-			if curValue > bestValue {
-				bestValue = curValue
-				bestSet = append([]model.Order{}, curSet...)
-			}
-			return false
-		}
-
-		if dfs(i+1, curWeight, curValue, curSet) {
-			return true
-		}
-
-		order := orders[i]
-		return dfs(i+1, curWeight+order.Weight, curValue+order.Value, append(curSet, order))
+	}
+	// 逆順に入っているので戻す
+	for i, j := 0, len(bestSet)-1; i < j; i, j = i+1, j-1 {
+		bestSet[i], bestSet[j] = bestSet[j], bestSet[i]
 	}
 
-	canceled := dfs(0, 0, 0, nil)
-	if canceled {
-		return model.DeliveryPlan{}, ctx.Err()
-	}
-
-	var totalWeight int
+	totalWeight := 0
 	for _, o := range bestSet {
 		totalWeight += o.Weight
 	}
