@@ -3,6 +3,7 @@ package repository
 import (
 	"backend/internal/model"
 	"context"
+	"strconv"
 )
 
 type ProductRepository struct {
@@ -13,7 +14,7 @@ func NewProductRepository(db DBTX) *ProductRepository {
 	return &ProductRepository{db: db}
 }
 
-// 商品一覧を全件取得し、アプリケーション側でページング処理を行う
+// 商品一覧をクエリで指定された箇所のみ取得する
 func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req model.ListRequest) ([]model.Product, int, error) {
 	var products []model.Product
 	baseQuery := `
@@ -29,22 +30,23 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 	}
 
 	baseQuery += " ORDER BY " + req.SortField + " " + req.SortOrder + " , product_id ASC"
+	baseQuery += " LIMIT " + strconv.Itoa(req.PageSize)
+	baseQuery += " OFFSET " + strconv.Itoa(req.Offset)
 
 	err := r.db.SelectContext(ctx, &products, baseQuery, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	total := len(products)
-	start := req.Offset
-	end := req.Offset + req.PageSize
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-	pagedProducts := products[start:end]
+	// COUNT関数による件数の取得
+	args = []interface{}{}
+	var total int
+	totalQuery := `SELECT COUNT(*) FROM products`
 
-	return pagedProducts, total, nil
+	err = r.db.GetContext(ctx, &total, totalQuery)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return products, total, nil
 }
