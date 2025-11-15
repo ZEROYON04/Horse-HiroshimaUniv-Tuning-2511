@@ -69,7 +69,7 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
         SELECT t1.order_id, t1.product_id, t2.name as product_name, t1.shipped_status, t1.created_at, t1.arrived_at
         FROM orders t1
         INNER JOIN products t2 ON t1.product_id = t2.product_id
-        WHERE user_id = ?;
+        WHERE t1.user_id = ?;
     `
 
 	var ordersRaw []model.Order
@@ -92,7 +92,7 @@ func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.
 			}
 		}
 		orders = append(orders, model.Order{
-			OrderID:       int64(o.OrderID),
+			OrderID:       o.OrderID,
 			ProductID:     o.ProductID,
 			ProductName:   o.ProductName,
 			ShippedStatus: o.ShippedStatus,
