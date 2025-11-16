@@ -64,55 +64,89 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
 	ctx, span := otel.Tracer("service.robot").Start(ctx, "selectOrdersForDelivery")
 	defer span.End()
-	n := len(orders)
-	bestValue := 0
-	var bestSet []model.Order
-	steps := 0
-	checkEvery := 16384
 
-	var dfs func(i, curWeight, curValue int, curSet []model.Order) bool
-	dfs = func(i, curWeight, curValue int, curSet []model.Order) bool {
-		if curWeight > robotCapacity {
-			return false
-		}
-		steps++
-		if checkEvery > 0 && steps%checkEvery == 0 {
-			select {
-			case <-ctx.Done():
-				return true
-			default:
-			}
-		}
-		if i == n {
-			if curValue > bestValue {
-				bestValue = curValue
-				bestSet = append([]model.Order{}, curSet...)
-			}
-			return false
-		}
-
-		if dfs(i+1, curWeight, curValue, curSet) {
-			return true
-		}
-
-		order := orders[i]
-		return dfs(i+1, curWeight+order.Weight, curValue+order.Value, append(curSet, order))
-	}
-
-	canceled := dfs(0, 0, 0, nil)
-	if canceled {
-		return model.DeliveryPlan{}, ctx.Err()
-	}
-
-	var totalWeight int
-	for _, o := range bestSet {
-		totalWeight += o.Weight
+	selected, bestValue, totalWeight, err := dp_1dim(ctx, orders, robotCapacity)
+	if err != nil {
+		return model.DeliveryPlan{}, err
 	}
 
 	return model.DeliveryPlan{
 		RobotID:     robotID,
 		TotalWeight: totalWeight,
 		TotalValue:  bestValue,
-		Orders:      bestSet,
+		Orders:      selected,
 	}, nil
+}
+
+func dp_1dim(ctx context.Context, orders []model.Order, capacity int) ([]model.Order, int, int, error) {
+	n := len(orders)
+	if n == 0 {
+		return nil, 0, 0, nil
+	}
+
+	// DP 配列
+	dp := make([]int, capacity+1)
+
+	// choice[i][w] = 注文 i を選んだか
+	choice := make([][]bool, n)
+	for i := range choice {
+		choice[i] = make([]bool, capacity+1)
+	}
+
+	// --- DP 本体 ---
+	for i := 0; i < n; i++ {
+		weight := orders[i].Weight
+		value := orders[i].Value
+
+		for w := capacity; w >= weight; w-- {
+
+			// ctx キャンセルチェック
+			if w%256 == 0 {
+				select {
+				case <-ctx.Done():
+					return nil, 0, 0, ctx.Err()
+				default:
+				}
+			}
+
+			if dp[w-weight]+value > dp[w] {
+				dp[w] = dp[w-weight] + value
+				choice[i][w] = true
+			}
+		}
+	}
+
+	// 最適値探索
+	bestValue := 0
+	bestWeight := 0
+	for w := 0; w <= capacity; w++ {
+		if dp[w] > bestValue {
+			bestValue = dp[w]
+			bestWeight = w
+		}
+	}
+
+	// --- 復元 ---
+	w := bestWeight
+	var selected []model.Order
+
+	for i := n - 1; i >= 0; i-- {
+		if w >= orders[i].Weight && choice[i][w] {
+			selected = append(selected, orders[i])
+			w -= orders[i].Weight
+		}
+	}
+
+	// 逆順修正
+	for i, j := 0, len(selected)-1; i < j; i, j = i+1, j-1 {
+		selected[i], selected[j] = selected[j], selected[i]
+	}
+
+	// 重量合計
+	totalWeight := 0
+	for _, o := range selected {
+		totalWeight += o.Weight
+	}
+
+	return selected, bestValue, totalWeight, nil
 }
