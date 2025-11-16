@@ -54,7 +54,7 @@ func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, 
 // 配送中(shipped_status:shipping)の注文一覧を取得
 func (r *OrderRepository) GetShippingOrders(ctx context.Context) ([]model.Order, error) {
 	var orders []model.Order
-	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRpository.GetShippingOrders")
+	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRepository.GetShippingOrders")
 	defer span.End()
 	query := `
         SELECT
