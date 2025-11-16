@@ -83,15 +83,11 @@ func dp_1dim(ctx context.Context, orders []model.Order, capacity int) ([]model.O
 	if n == 0 {
 		return nil, 0, 0, nil
 	}
-
+	// メモリ最適化のために1次元で管理
 	// DP 配列
 	dp := make([]int, capacity+1)
-
-	// choice[i][w] = 注文 i を選んだか
-	choice := make([][]bool, n)
-	for i := range choice {
-		choice[i] = make([]bool, capacity+1)
-	}
+	// choice配列 = 注文 i を選んだか
+	choice := make([]bool, n*(capacity+1))
 
 	// --- DP 本体 ---
 	for i := 0; i < n; i++ {
@@ -99,19 +95,16 @@ func dp_1dim(ctx context.Context, orders []model.Order, capacity int) ([]model.O
 		value := orders[i].Value
 
 		for w := capacity; w >= weight; w-- {
-
-			// ctx キャンセルチェック
-			if w%256 == 0 {
-				select {
-				case <-ctx.Done():
-					return nil, 0, 0, ctx.Err()
-				default:
-				}
+			// 内側ループでキャンセルチェック
+			select {
+			case <-ctx.Done():
+				return nil, 0, 0, ctx.Err()
+			default:
 			}
 
 			if dp[w-weight]+value > dp[w] {
 				dp[w] = dp[w-weight] + value
-				choice[i][w] = true
+				choice[i*(capacity+1)+w] = true
 			}
 		}
 	}
@@ -131,7 +124,7 @@ func dp_1dim(ctx context.Context, orders []model.Order, capacity int) ([]model.O
 	var selected []model.Order
 
 	for i := n - 1; i >= 0; i-- {
-		if w >= orders[i].Weight && choice[i][w] {
+		if w >= orders[i].Weight && choice[i*(capacity+1)+w] {
 			selected = append(selected, orders[i])
 			w -= orders[i].Weight
 		}
