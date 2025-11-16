@@ -25,7 +25,7 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 		args = append(args, searchPattern, searchPattern)
 	}
 
-	// 2. COUNTクエリを構築・実行する
+	// COUNTクエリを構築・実行する
 	totalQuery := "SELECT COUNT(*) FROM products" + whereClause
 	totalQuery = r.db.Rebind(totalQuery)
 
