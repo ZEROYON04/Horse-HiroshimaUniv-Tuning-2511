@@ -1,1 +1,0 @@
-ALTER TABLE products ADD FULLTEXT INDEX name_desc_full_idx (name,description) WITH PARSER ngram;
