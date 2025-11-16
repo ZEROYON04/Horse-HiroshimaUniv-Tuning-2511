@@ -37,7 +37,7 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (strin
 // 複数の注文IDのステータスを一括で更新
 // 主に配送ロボットが注文を引き受けた際に一括更新をするために使用
 func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, newStatus string) error {
-	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRpository.UpdateStatuses")
+	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRepository.UpdateStatuses")
 	defer span.End()
 	if len(orderIDs) == 0 {
 		return nil
