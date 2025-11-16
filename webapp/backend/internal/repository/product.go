@@ -20,9 +20,8 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 	var args []interface{}
 	var whereClause string
 	if req.Search != "" {
-		whereClause = " WHERE (name LIKE ? OR description LIKE ?)"
-		searchPattern := "%" + req.Search + "%"
-		args = append(args, searchPattern, searchPattern)
+		whereClause += " WHERE MATCH (name,description) AGAINST (? IN BOOLEAN MODE)"
+		args = append(args, req.Search)
 	}
 
 	// COUNTクエリを構築・実行する
