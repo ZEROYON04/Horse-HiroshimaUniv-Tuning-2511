@@ -18,8 +18,8 @@ func NewProductService(store *repository.Store) *ProductService {
 	return &ProductService{store: store}
 }
 
-func (s *ProductService) CreateOrders(ctx context.Context, userID int, items []model.RequestItem) ([]string, error) {
-	var insertedOrderIDs []string
+func (s *ProductService) CreateOrders(ctx context.Context, userID int, items []model.RequestItem) ([]int, error) {
+	var insertedOrderIDs []int
 
 	ctx, span := otel.Tracer("service.product").Start(ctx, "ProductService.CreateOrders")
 	defer span.End()
@@ -34,19 +34,10 @@ func (s *ProductService) CreateOrders(ctx context.Context, userID int, items []m
 		if len(itemsToProcess) == 0 {
 			return nil
 		}
-
-		for pID, quantity := range itemsToProcess {
-			for i := 0; i < quantity; i++ {
-				order := &model.Order{
-					UserID:    userID,
-					ProductID: pID,
-				}
-				orderID, err := txStore.OrderRepo.Create(ctx, order)
-				if err != nil {
-					return err
-				}
-				insertedOrderIDs = append(insertedOrderIDs, orderID)
-			}
+		var txCreateErr error
+		insertedOrderIDs, txCreateErr = txStore.OrderRepo.Create(ctx, itemsToProcess, userID)
+		if txCreateErr != nil {
+			return txCreateErr
 		}
 		return nil
 	})

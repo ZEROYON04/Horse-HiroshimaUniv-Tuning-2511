@@ -3,7 +3,6 @@ package repository
 import (
 	"backend/internal/model"
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -20,19 +19,64 @@ func NewOrderRepository(db DBTX) *OrderRepository {
 }
 
 // 注文を作成し、生成された注文IDを返す
-func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (string, error) {
+func (r *OrderRepository) Create(ctx context.Context, itemsToProcess map[int]int, userID int) ([]int, error) {
 	ctx, span := otel.Tracer("service.order").Start(ctx, "OrderRepository.Create")
 	defer span.End()
-	query := `INSERT INTO orders (user_id, product_id, shipped_status, created_at) VALUES (?, ?, 'shipping', NOW())`
-	result, err := r.db.ExecContext(ctx, query, order.UserID, order.ProductID)
-	if err != nil {
-		return "", err
+	var insertedOrderIDs []int
+
+	totalOrders := 0
+	for _, count := range itemsToProcess {
+		totalOrders += count
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return "", err
+
+	if totalOrders == 0 {
+		return []int{}, nil
 	}
-	return fmt.Sprintf("%d", id), nil
+
+	// 1. クエリの動的生成
+	baseQuery := `INSERT INTO orders (user_id, product_id, shipped_status, created_at) VALUES `
+	placeholderTemplate := `(?, ?, 'shipping', NOW())`
+
+	// 挿入する VALUES のセットをカンマで区切って格納するためのスライス
+	// 各セットは (user_id, product_id, 'shipping', NOW()) に対応
+	placeholders := make([]string, 0, totalOrders)
+
+	// 2. 引数リストの作成（フラット化）
+	// 各注文につき2つの引数 (user_id, product_id) が必要
+	args := make([]interface{}, 0, totalOrders*2)
+
+	// itemsToProcess マップをループ
+	for productID, count := range itemsToProcess {
+		for i := 0; i < count; i++ {
+			// プレースホルダのセットを追加
+			placeholders = append(placeholders, placeholderTemplate)
+
+			// 対応する引数 (userID と productID) を追加
+			args = append(args, userID)
+			args = append(args, productID)
+		}
+	}
+
+	// 3. クエリ文字列の結合
+	// placeholders スライスをカンマとスペースで結合
+	finalQuery := baseQuery + strings.Join(placeholders, ", ")
+	// 4. クエリの実行
+	result, err := r.db.ExecContext(ctx, finalQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. 挿入された注文IDの計算
+	for i := 0; i < totalOrders; i++ {
+		orderID := int(lastInsertID) + i
+		insertedOrderIDs = append(insertedOrderIDs, orderID)
+	}
+
+	return insertedOrderIDs, nil
 }
 
 // 複数の注文IDのステータスを一括で更新
