@@ -47,7 +47,7 @@ func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req mo
 	` + whereClause // WHERE句を適用
 
 	// ORDER BY と LIMIT/OFFSET を追加
-	baseQuery += " ORDER BY " + req.SortField + " " + req.SortOrder + " , product_id ASC"
+	baseQuery += " ORDER BY " + req.SortField + " " + req.SortOrder + " , product_id " + req.SortOrder
 	baseQuery += " LIMIT " + strconv.Itoa(req.PageSize)
 	baseQuery += " OFFSET " + strconv.Itoa(req.Offset)
 
