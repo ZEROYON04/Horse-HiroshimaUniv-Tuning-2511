@@ -6,6 +6,8 @@ import (
 	"backend/internal/service/utils"
 	"context"
 	"log"
+
+	"go.opentelemetry.io/otel"
 )
 
 type RobotService struct {
@@ -20,6 +22,8 @@ func NewRobotService(store *repository.Store) *RobotService {
 // 注文の取得件数を制限した場合、ペナルティの対象になります。
 func (s *RobotService) GenerateDeliveryPlan(ctx context.Context, robotID string, capacity int) (*model.DeliveryPlan, error) {
 	var plan model.DeliveryPlan
+	ctx, span := otel.Tracer("service.robot").Start(ctx, "RobotService.GenerateDeliveryPlan")
+	defer span.End()
 
 	err := utils.WithTimeout(ctx, func(ctx context.Context) error {
 		return s.store.ExecTx(ctx, func(txStore *repository.Store) error {
@@ -58,6 +62,8 @@ func (s *RobotService) UpdateOrderStatus(ctx context.Context, orderID int64, new
 }
 
 func selectOrdersForDelivery(ctx context.Context, orders []model.Order, robotID string, robotCapacity int) (model.DeliveryPlan, error) {
+	ctx, span := otel.Tracer("service.robot").Start(ctx, "selectOrdersForDelivery")
+	defer span.End()
 	n := len(orders)
 	bestValue := 0
 	var bestSet []model.Order
