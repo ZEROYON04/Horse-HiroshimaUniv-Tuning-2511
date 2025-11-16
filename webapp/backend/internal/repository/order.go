@@ -62,9 +62,18 @@ func (r *OrderRepository) Create(ctx context.Context, itemsToProcess map[int]int
 	// placeholders スライスをカンマとスペースで結合
 	finalQuery := baseQuery + strings.Join(placeholders, ", ")
 	// 4. クエリの実行
-	_, err := r.db.ExecContext(ctx, finalQuery, args...)
+	result, err := r.db.ExecContext(ctx, finalQuery, args...)
 	if err != nil {
 		return nil, err
+	}
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. 挿入された注文IDの計算
+	for i := 0; i < totalOrders; i++ {
+		insertedOrderIDs[i] = int(lastInsertID) + i
 	}
 
 	return insertedOrderIDs, nil
