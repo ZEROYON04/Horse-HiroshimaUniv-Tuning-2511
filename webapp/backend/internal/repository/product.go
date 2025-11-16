@@ -3,6 +3,7 @@ package repository
 import (
 	"backend/internal/model"
 	"context"
+	"strconv"
 )
 
 type ProductRepository struct {
@@ -13,38 +14,51 @@ func NewProductRepository(db DBTX) *ProductRepository {
 	return &ProductRepository{db: db}
 }
 
-// 商品一覧を全件取得し、アプリケーション側でページング処理を行う
+// 商品一覧をクエリで指定された箇所のみ取得する
 func (r *ProductRepository) ListProducts(ctx context.Context, userID int, req model.ListRequest) ([]model.Product, int, error) {
-	var products []model.Product
-	baseQuery := `
-		SELECT product_id, name, value, weight, image, description
-		FROM products
-	`
-	args := []interface{}{}
-
+	// WHERE句と引数を先に構築
+	var args []interface{}
+	var whereClause string
 	if req.Search != "" {
-		baseQuery += " WHERE (name LIKE ? OR description LIKE ?)"
+		whereClause = " WHERE (name LIKE ? OR description LIKE ?)"
 		searchPattern := "%" + req.Search + "%"
 		args = append(args, searchPattern, searchPattern)
 	}
 
-	baseQuery += " ORDER BY " + req.SortField + " " + req.SortOrder + " , product_id ASC"
+	// COUNTクエリを構築・実行する
+	totalQuery := "SELECT COUNT(*) FROM products" + whereClause
+	totalQuery = r.db.Rebind(totalQuery)
 
-	err := r.db.SelectContext(ctx, &products, baseQuery, args...)
+	var total int
+	err := r.db.GetContext(ctx, &total, totalQuery, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	total := len(products)
-	start := req.Offset
-	end := req.Offset + req.PageSize
-	if start > total {
-		start = total
+	// 検索結果が0件なら、商品取得クエリは実行せずに即時リターン
+	if total == 0 {
+		return []model.Product{}, 0, nil
 	}
-	if end > total {
-		end = total
-	}
-	pagedProducts := products[start:end]
 
-	return pagedProducts, total, nil
+	// 商品一覧クエリを構築・実行する (WHERE, ORDER, Pagingを適用)
+	baseQuery := `
+		SELECT product_id, name, value, weight, image, description
+		FROM products
+	` + whereClause // WHERE句を適用
+
+	// ORDER BY と LIMIT/OFFSET を追加
+	baseQuery += " ORDER BY " + req.SortField + " " + req.SortOrder + " , product_id ASC"
+	baseQuery += " LIMIT " + strconv.Itoa(req.PageSize)
+	baseQuery += " OFFSET " + strconv.Itoa(req.Offset)
+
+	// Rebindを使って '?' を '$1' などに置換する
+	baseQuery = r.db.Rebind(baseQuery)
+
+	var products []model.Product
+	err = r.db.SelectContext(ctx, &products, baseQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return products, total, nil
 }

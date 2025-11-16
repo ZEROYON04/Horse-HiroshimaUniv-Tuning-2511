@@ -3,12 +3,12 @@ package repository
 import (
 	"backend/internal/model"
 	"context"
-	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel"
 )
 
 type OrderRepository struct {
@@ -21,6 +21,8 @@ func NewOrderRepository(db DBTX) *OrderRepository {
 
 // 注文を作成し、生成された注文IDを返す
 func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (string, error) {
+	ctx, span := otel.Tracer("service.order").Start(ctx, "OrderRepository.Create")
+	defer span.End()
 	query := `INSERT INTO orders (user_id, product_id, shipped_status, created_at) VALUES (?, ?, 'shipping', NOW())`
 	result, err := r.db.ExecContext(ctx, query, order.UserID, order.ProductID)
 	if err != nil {
@@ -36,6 +38,8 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (strin
 // 複数の注文IDのステータスを一括で更新
 // 主に配送ロボットが注文を引き受けた際に一括更新をするために使用
 func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, newStatus string) error {
+	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRepository.UpdateStatuses")
+	defer span.End()
 	if len(orderIDs) == 0 {
 		return nil
 	}
@@ -51,6 +55,8 @@ func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, 
 // 配送中(shipped_status:shipping)の注文一覧を取得
 func (r *OrderRepository) GetShippingOrders(ctx context.Context) ([]model.Order, error) {
 	var orders []model.Order
+	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRepository.GetShippingOrders")
+	defer span.End()
 	query := `
         SELECT
             o.order_id,
@@ -67,45 +73,37 @@ func (r *OrderRepository) GetShippingOrders(ctx context.Context) ([]model.Order,
 // 注文履歴一覧を取得
 func (r *OrderRepository) ListOrders(ctx context.Context, userID int, req model.ListRequest) ([]model.Order, int, error) {
 	query := `
-        SELECT order_id, product_id, shipped_status, created_at, arrived_at
-        FROM orders
-        WHERE user_id = ?
+        SELECT t1.order_id, t1.product_id, t2.name as product_name, t1.shipped_status, t1.created_at, t1.arrived_at
+        FROM orders t1
+        INNER JOIN products t2 ON t1.product_id = t2.product_id
+        WHERE t1.user_id = ?;
     `
-	type orderRow struct {
-		OrderID       int          `db:"order_id"`
-		ProductID     int          `db:"product_id"`
-		ShippedStatus string       `db:"shipped_status"`
-		CreatedAt     sql.NullTime `db:"created_at"`
-		ArrivedAt     sql.NullTime `db:"arrived_at"`
-	}
-	var ordersRaw []orderRow
+
+	var ordersRaw []model.Order
 	if err := r.db.SelectContext(ctx, &ordersRaw, query, userID); err != nil {
 		return nil, 0, err
 	}
 
 	var orders []model.Order
 	for _, o := range ordersRaw {
-		var productName string
-		if err := r.db.GetContext(ctx, &productName, "SELECT name FROM products WHERE product_id = ?", o.ProductID); err != nil {
-			return nil, 0, err
-		}
+
 		if req.Search != "" {
 			if req.Type == "prefix" {
-				if !strings.HasPrefix(productName, req.Search) {
+				if !strings.HasPrefix(o.ProductName, req.Search) {
 					continue
 				}
 			} else {
-				if !strings.Contains(productName, req.Search) {
+				if !strings.Contains(o.ProductName, req.Search) {
 					continue
 				}
 			}
 		}
 		orders = append(orders, model.Order{
-			OrderID:       int64(o.OrderID),
+			OrderID:       o.OrderID,
 			ProductID:     o.ProductID,
-			ProductName:   productName,
+			ProductName:   o.ProductName,
 			ShippedStatus: o.ShippedStatus,
-			CreatedAt:     o.CreatedAt.Time,
+			CreatedAt:     o.CreatedAt,
 			ArrivedAt:     o.ArrivedAt,
 		})
 	}
