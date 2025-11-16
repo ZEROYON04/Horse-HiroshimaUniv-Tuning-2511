@@ -47,7 +47,6 @@ func (r *OrderRepository) Create(ctx context.Context, itemsToProcess map[int]int
 
 	// itemsToProcess マップをループ
 	for productID, count := range itemsToProcess {
-		insertedOrderIDs = append(insertedOrderIDs, productID)
 		for i := 0; i < count; i++ {
 			// プレースホルダのセットを追加
 			placeholders = append(placeholders, placeholderTemplate)
@@ -73,7 +72,8 @@ func (r *OrderRepository) Create(ctx context.Context, itemsToProcess map[int]int
 
 	// 5. 挿入された注文IDの計算
 	for i := 0; i < totalOrders; i++ {
-		insertedOrderIDs[i] = int(lastInsertID) + i
+		orderID := int(lastInsertID) + i
+		insertedOrderIDs = append(insertedOrderIDs, orderID)
 	}
 
 	return insertedOrderIDs, nil
