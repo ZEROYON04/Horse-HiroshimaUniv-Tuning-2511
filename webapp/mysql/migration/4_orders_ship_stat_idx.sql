@@ -1,0 +1,1 @@
+CREATE INDEX idx_order_status_product ON orders (shipped_status, product_id);
