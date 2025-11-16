@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 )
 
 type SessionRepository struct {
@@ -17,6 +18,9 @@ func NewSessionRepository(db DBTX) *SessionRepository {
 
 // セッションを作成し、セッションIDと有効期限を返す
 func (r *SessionRepository) Create(ctx context.Context, userBusinessID int, duration time.Duration) (string, time.Time, error) {
+	ctx, span := otel.Tracer("repository.session").Start(ctx, "SessionRepository.Create")
+	defer span.End()
+
 	sessionUUID, err := uuid.NewRandom()
 	if err != nil {
 		return "", time.Time{}, err
@@ -35,6 +39,10 @@ func (r *SessionRepository) Create(ctx context.Context, userBusinessID int, dura
 // セッションIDからユーザーIDを取得
 func (r *SessionRepository) FindUserBySessionID(ctx context.Context, sessionID string) (int, error) {
 	var userID int
+
+	ctx, span := otel.Tracer("repository.session").Start(ctx, "SessionRepository.FindUserBySessionID")
+	defer span.End()
+
 	query := `
 		SELECT 
 			u.user_id

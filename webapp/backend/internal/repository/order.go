@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel"
 )
 
 type OrderRepository struct {
@@ -20,6 +21,8 @@ func NewOrderRepository(db DBTX) *OrderRepository {
 
 // 注文を作成し、生成された注文IDを返す
 func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (string, error) {
+	ctx, span := otel.Tracer("service.order").Start(ctx, "OrderRepository.Create")
+	defer span.End()
 	query := `INSERT INTO orders (user_id, product_id, shipped_status, created_at) VALUES (?, ?, 'shipping', NOW())`
 	result, err := r.db.ExecContext(ctx, query, order.UserID, order.ProductID)
 	if err != nil {
@@ -35,6 +38,8 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order) (strin
 // 複数の注文IDのステータスを一括で更新
 // 主に配送ロボットが注文を引き受けた際に一括更新をするために使用
 func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, newStatus string) error {
+	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRepository.UpdateStatuses")
+	defer span.End()
 	if len(orderIDs) == 0 {
 		return nil
 	}
@@ -50,6 +55,8 @@ func (r *OrderRepository) UpdateStatuses(ctx context.Context, orderIDs []int64, 
 // 配送中(shipped_status:shipping)の注文一覧を取得
 func (r *OrderRepository) GetShippingOrders(ctx context.Context) ([]model.Order, error) {
 	var orders []model.Order
+	ctx, span := otel.Tracer("repository.order").Start(ctx, "OrderRepository.GetShippingOrders")
+	defer span.End()
 	query := `
         SELECT
             o.order_id,

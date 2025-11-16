@@ -6,6 +6,8 @@ import (
 	"errors"
 
 	"backend/internal/model"
+
+	"go.opentelemetry.io/otel"
 )
 
 type UserRepository struct {
@@ -20,6 +22,10 @@ func NewUserRepository(db DBTX) *UserRepository {
 // ログイン時に使用
 func (r *UserRepository) FindByUserName(ctx context.Context, userName string) (*model.User, error) {
 	var user model.User
+
+	ctx, span := otel.Tracer("repository.user").Start(ctx, "UserRepository.FindByUserName")
+	defer span.End()
+
 	query := "SELECT user_id, password_hash, user_name FROM users WHERE user_name = ?"
 
 	err := r.db.GetContext(ctx, &user, query, userName)
